@@ -11,14 +11,10 @@ from pydantic import BaseModel
 from google import genai
 import psycopg2
 
-app = FastAPI(title="AI Secure Code Guardian & Neon Cloud Database")
+app = FastAPI(title="AI Secure Code Guardian & Explainer")
 
-# Google Gemini ক্লায়েন্ট ইনিশিয়ালাইজ করা হচ্ছে
 client = genai.Client(api_key="AQ.Ab8RN6I5KZ8lIhn22x-Hc4wJWqe_9lj4KgfvTo0WVYFEkr9P2w")
 
-# ==========================================
-# Neon PostgreSQL Cloud Database Connection
-# ==========================================
 NEON_DATABASE_URL = "postgresql://neondb_owner:npg_c1eUk8WQBYsM@ep-purple-cell-b4xqjces-pooler.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require"
 
 def init_db():
@@ -38,9 +34,8 @@ def init_db():
         conn.commit()
         cursor.close()
         conn.close()
-        print("Connected to Neon Cloud PostgreSQL successfully!")
     except Exception as e:
-        print(f"Database initialization error: {e}")
+        print(f"Database error: {e}")
 
 init_db()
 
@@ -92,16 +87,17 @@ def call_gemini_with_retry(prompt_text, max_retries=3):
     for attempt in range(max_retries):
         try:
             response = client.models.generate_content(
-                model='gemini-3.8-flash',
+                model='gemini-2.5-flash',  # নিশ্চিত এবং স্ট্যাবল মডেল ব্যবহার করা হলো
                 contents=prompt_text
             )
             return response.text
         except Exception as e:
-            if ("503" in str(e) or "404" in str(e)) and attempt < max_retries - 1:
+            print(f"Gemini API Attempt {attempt+1} failed: {e}")
+            if attempt < max_retries - 1:
                 time.sleep(2)
                 continue
             else:
-                return "```python\n# Fallback fixed version\nprint('System auto-recovered.')\n```"
+                raise HTTPException(status_code=500, detail=f"Gemini API Error: {str(e)}")
 
 def auto_heal_and_explain(broken_code: str, error_message: str, language: str):
     prompt = f"""
@@ -121,22 +117,19 @@ def auto_heal_and_explain(broken_code: str, error_message: str, language: str):
     ---EXPLANATION---
     [Put the detailed explanation of problems and fixes here as bullet points]
     """
-    try:
-        raw_response = call_gemini_with_retry(prompt)
-        code_part = ""
-        explanation_part = "Code successfully healed and verified."
+    raw_response = call_gemini_with_retry(prompt)
+    code_part = ""
+    explanation_part = "Code successfully healed and verified."
+    
+    if "---EXPLANATION---" in raw_response:
+        parts = raw_response.split("---EXPLANATION---")
+        code_raw = parts[0].replace("---CODE---", "")
+        code_part = extract_code_from_markdown(code_raw)
+        explanation_part = parts[1].strip()
+    else:
+        code_part = extract_code_from_markdown(raw_response)
         
-        if "---EXPLANATION---" in raw_response:
-            parts = raw_response.split("---EXPLANATION---")
-            code_raw = parts[0].replace("---CODE---", "")
-            code_part = extract_code_from_markdown(code_raw)
-            explanation_part = parts[1].strip()
-        else:
-            code_part = extract_code_from_markdown(raw_response)
-            
-        return code_part, explanation_part
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI Healing failed: {str(e)}")
+    return code_part, explanation_part
 
 def execute_sandbox(code: str):
     try:
@@ -154,7 +147,6 @@ def execute_sandbox(code: str):
     except Exception as ex:
         return f"Sandbox execution failed: {str(ex)}"
 
-# Neon ডাটাবেজ থেকে হিস্ট্রি ফেচ করার এপিআই
 @app.get("/guardian/history")
 async def get_history():
     try:
@@ -179,7 +171,6 @@ async def get_history():
     except Exception as e:
         return []
 
-# Neon ডাটাবেজ থেকে হিস্ট্রি ক্লিয়ার করার এপিআই
 @app.delete("/guardian/history")
 async def delete_history():
     try:
@@ -193,7 +184,6 @@ async def delete_history():
     except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to clear database.")
 
-# মূল প্রসেসিং এবং Neon ডাটাবেজে সেভ করার এন্ডপয়েন্ট
 @app.post("/guardian/process")
 async def process_code(request: CodeRequest):
     input_code = request.code
@@ -224,7 +214,6 @@ async def process_code(request: CodeRequest):
     if language.lower() == "python":
         sandbox_output = execute_sandbox(final_code)
 
-    # Neon PostgreSQL ডাটাবেজে পার্মানেন্টলি সেভ করা
     try:
         conn = psycopg2.connect(NEON_DATABASE_URL)
         cursor = conn.cursor()
@@ -248,7 +237,6 @@ async def process_code(request: CodeRequest):
         "healing_process_logs": healing_log
     }
 
-# ইউজার ইন্টারফেস (অরিজিনাল ডিজাইন এবং Neon ডাটাবেজ হিস্ট্রি লোডার সহ)
 @app.get("/", response_class=HTMLResponse)
 async def home():
     html_content = """
@@ -429,7 +417,7 @@ async def home():
                         document.getElementById('logList').innerHTML = logHtml;
                         document.getElementById('results').style.display = 'block';
 
-                        loadHistory(); // Reload DB history
+                        loadHistory();
                     } else {
                         alert('Error: ' + data.detail);
                     }
