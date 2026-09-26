@@ -37,3 +37,30 @@ If you want to run this project locally on your machine, follow these steps:
 
    Install dependencies:
 
+nstall dependencies:
+
+Bash
+pip install -r requirements.txt
+Configure your Database URL:
+Update your NEON_DATABASE_URL in main.py with your own PostgreSQL connection string if needed.
+
+Run the application:
+
+Bash
+python main.py
+Open your browser and navigate to: http://127.0.0.1:8000
+
+💡 Usage
+Select your target programming language (Python, JavaScript, Java, C++).
+
+Input any custom security keywords (optional).
+
+Paste your code snippet and click "Generate & Validate Code".
+
+View the security audit, self-healed code, sandbox output, and previous cloud history instantly!
+
+🤝 Contributing
+Contributions, issues, and feature requests are welcome! Feel free to check the issues page.
+
+📝 License
+This project is open-source and available under the MIT License.
